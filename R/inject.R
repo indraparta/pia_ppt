@@ -58,6 +58,10 @@ inject_slide_title <- function(
 #' @param x An `officer::rpptx` object.
 #' @param bullets Character vector of bullet text.
 #' @param levels Optional integer vector of bullet indentation levels.
+#' @param spacing_before_pt Paragraph spacing before each bullet, in points.
+#'   Defaults to `3`.
+#' @param spacing_after_pt Paragraph spacing after each bullet, in points.
+#'   Defaults to `3`.
 #' @param cfg A configuration object created by `new_pia_template()`.
 #' @param ph_label Placeholder label to target. Defaults to configured content
 #'   bullet placeholder.
@@ -69,6 +73,8 @@ inject_dotpoints <- function(
   x,
   bullets,
   levels = NULL,
+  spacing_before_pt = 3,
+  spacing_after_pt = 3,
   cfg,
   ph_label = cfg$content_spec$placeholders$bullets,
   location = NULL
@@ -90,14 +96,24 @@ inject_dotpoints <- function(
       any(is.na(levels)) || any(levels < 1)) {
     stop("`levels` must be positive integers with one value per bullet.", call. = FALSE)
   }
+  if (!is.numeric(spacing_before_pt) || length(spacing_before_pt) != 1 ||
+      is.na(spacing_before_pt) || spacing_before_pt < 0) {
+    stop("`spacing_before_pt` must be a non-negative number.", call. = FALSE)
+  }
+  if (!is.numeric(spacing_after_pt) || length(spacing_after_pt) != 1 ||
+      is.na(spacing_after_pt) || spacing_after_pt < 0) {
+    stop("`spacing_after_pt` must be a non-negative number.", call. = FALSE)
+  }
 
   loc <- resolve_location(ph_label = ph_label, location = location)
-  value <- officer::unordered_list(
-    str_list = bullets,
-    level_list = as.integer(levels)
+  ph_with_spaced_unordered_list(
+    x = x,
+    bullets = bullets,
+    levels = as.integer(levels),
+    location = loc,
+    spacing_before_pt = spacing_before_pt,
+    spacing_after_pt = spacing_after_pt
   )
-
-  officer::ph_with(x = x, value = value, location = loc)
 }
 
 #' Add a primary content slide
@@ -108,6 +124,10 @@ inject_dotpoints <- function(
 #' @param title A title string for the content slide.
 #' @param bullets Character vector of bullet text.
 #' @param bullet_levels Optional integer vector of bullet indentation levels.
+#' @param bullet_spacing_before_pt Paragraph spacing before each bullet, in
+#'   points. Defaults to `3`.
+#' @param bullet_spacing_after_pt Paragraph spacing after each bullet, in
+#'   points. Defaults to `3`.
 #'
 #' @return Updated `officer::rpptx` object.
 #' @export
@@ -117,7 +137,9 @@ add_primary_slide <- function(
   chart,
   title,
   bullets,
-  bullet_levels = NULL
+  bullet_levels = NULL,
+  bullet_spacing_before_pt = 3,
+  bullet_spacing_after_pt = 3
 ) {
   assert_rpptx(x, "x")
   assert_template_config(cfg)
@@ -140,8 +162,73 @@ add_primary_slide <- function(
     x = x,
     bullets = bullets,
     levels = bullet_levels,
+    spacing_before_pt = bullet_spacing_before_pt,
+    spacing_after_pt = bullet_spacing_after_pt,
     cfg = cfg,
     ph_label = spec$placeholders$bullets
   )
+  x
+}
+
+ph_with_spaced_unordered_list <- function(
+  x,
+  bullets,
+  levels,
+  location,
+  spacing_before_pt = 3,
+  spacing_after_pt = 3
+) {
+  slide <- x$slide$get_slide(x$cursor)
+  fortify_location <- getFromNamespace("fortify_location", "officer")
+  shape_properties_tags <- getFromNamespace("shape_properties_tags", "officer")
+  html_escape <- getFromNamespace("htmlEscapeCopy", "officer")
+  psp_ns_yes <- getFromNamespace("psp_ns_yes", "officer")
+
+  location <- fortify_location(location, doc = x)
+  new_ph <- shape_properties_tags(
+    left = location$left,
+    top = location$top,
+    width = location$width,
+    height = location$height,
+    label = location$ph_label,
+    ph = location$ph,
+    rot = location$rotation,
+    bg = location$bg,
+    ln = location$ln,
+    geom = location$geom
+  )
+
+  before_val <- as.integer(round(spacing_before_pt * 100))
+  after_val <- as.integer(round(spacing_after_pt * 100))
+
+  pars <- vapply(seq_along(bullets), function(i) {
+    lvl <- as.integer(levels[[i]])
+    lvl_attr <- if (lvl > 1L) sprintf(" lvl=\"%d\"", lvl - 1L) else ""
+    bu_none <- if (lvl < 1L) "<a:buNone/>" else ""
+
+    sprintf(
+      paste0(
+        "<a:p><a:pPr%s>",
+        "<a:spcBef><a:spcPts val=\"%d\"/></a:spcBef>",
+        "<a:spcAft><a:spcPts val=\"%d\"/></a:spcAft>",
+        "%s</a:pPr><a:r><a:rPr/><a:t>%s</a:t></a:r></a:p>"
+      ),
+      lvl_attr,
+      before_val,
+      after_val,
+      bu_none,
+      html_escape(as.character(bullets[[i]]))
+    )
+  }, character(1))
+
+  xml_elt <- paste0(
+    psp_ns_yes,
+    new_ph,
+    "<p:txBody><a:bodyPr/><a:lstStyle/>",
+    paste0(pars, collapse = ""),
+    "</p:txBody></p:sp>"
+  )
+  node <- xml2::as_xml_document(xml_elt)
+  xml2::xml_add_child(xml2::xml_find_first(slide$get(), "//p:spTree"), node)
   x
 }

@@ -34,3 +34,61 @@ test_that("front + primary flow writes a deck", {
   first_text <- first_slide_text(out)
   expect_true(front_title %in% first_text)
 })
+
+test_that("dotpoint spacing defaults to 3pt before/after", {
+  skip_if_officer_missing()
+  testthat::skip_if_not_installed("ggplot2")
+  skip_if_xml2_missing()
+
+  cfg <- new_pia_template(template_fixture_path())
+  x <- open_template(cfg)
+
+  chart <- ggplot2::ggplot(ggplot2::mpg, ggplot2::aes(displ, hwy)) +
+    ggplot2::geom_point()
+
+  x <- add_primary_slide(
+    x = x,
+    cfg = cfg,
+    chart = chart,
+    title = "Spacing test",
+    bullets = c("One", "Two"),
+    bullet_levels = c(2L, 2L)
+  )
+
+  out <- tempfile(fileext = ".pptx")
+  write_presentation(x, out)
+
+  slide_xml <- first_slide_xml_string(out)
+  expect_true(grepl("a:spcBef>\\s*<a:spcPts val=\"300\"", slide_xml, perl = TRUE))
+  expect_true(grepl("a:spcAft>\\s*<a:spcPts val=\"300\"", slide_xml, perl = TRUE))
+})
+
+test_that("dotpoint spacing can be overridden", {
+  skip_if_officer_missing()
+  testthat::skip_if_not_installed("ggplot2")
+  skip_if_xml2_missing()
+
+  cfg <- new_pia_template(template_fixture_path())
+  x <- open_template(cfg)
+
+  chart <- ggplot2::ggplot(ggplot2::mpg, ggplot2::aes(displ, hwy)) +
+    ggplot2::geom_point()
+
+  x <- add_primary_slide(
+    x = x,
+    cfg = cfg,
+    chart = chart,
+    title = "Spacing override",
+    bullets = c("One", "Two"),
+    bullet_levels = c(2L, 2L),
+    bullet_spacing_before_pt = 5,
+    bullet_spacing_after_pt = 7
+  )
+
+  out <- tempfile(fileext = ".pptx")
+  write_presentation(x, out)
+
+  slide_xml <- first_slide_xml_string(out)
+  expect_true(grepl("a:spcBef>\\s*<a:spcPts val=\"500\"", slide_xml, perl = TRUE))
+  expect_true(grepl("a:spcAft>\\s*<a:spcPts val=\"700\"", slide_xml, perl = TRUE))
+})

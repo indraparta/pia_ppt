@@ -39,6 +39,10 @@ ppt <- add_primary_slide(
   )
 )
 
+# Bullet paragraph spacing defaults to 3pt before and 3pt after.
+# Override via:
+# bullet_spacing_before_pt = 5, bullet_spacing_after_pt = 7
+
 write_presentation(ppt, "output/deck.pptx")
 ```
 
